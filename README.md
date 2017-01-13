@@ -785,7 +785,29 @@ module.exports = {
 };
 ```
 
-最后，总结一下，我们在`middleware.before`中做的事情就是获取到我们webpack的配置文件并加入一下插件而已，并提供了修改webpack配置的两个钩子函数，如第二点。
+最后，总结一下，我们在`middleware.before`中做的事情就是获取到我们webpack的配置文件并加入一下插件而已，并提供了修改webpack配置的两个钩子函数，如第二点。从下面的执行时机来说，我们此时的koa服务器都没有启动：
+```js
+async.series([
+    next => _applyPlugins('middleware.before', null, next),
+    next => _applyPlugins('middleware', null, next),
+    next => _applyPlugins('middleware.after', null, next),
+    //中间件注册完毕以后,也就是'middleware.after'后我们才会创建服务器，并将server封装到context的server属性之上
+    next => { server = context.server = http.createServer(app.callback()); next(); },
+    next => _applyPlugins('server.before', null, next),
+    next => {
+      server.listen(port, () => {
+        if (context.get('__server_listen_log')) {
+          log.info('dora', `listened on ${port}`);
+        }
+        context.set('__ready', true);
+        //为context设置一个__reay属性为true
+        next();
+      });
+    },
+    next => _applyPlugins('server.after', null, next),
+    //服务器注册完毕以后，也就是在'server.after'后，我们会执行所有的插件
+  ], callback);
+```
 
 接下来我们分析下"middleware"时机：
 
@@ -851,7 +873,7 @@ compiler.run(function(err, stats) {
 });
 ```
 
-那么这里的作用应该也是一样的！具体可以参考文末参考文献,你也可以查看[这个issue](https://github.com/webpack/webpack-dev-middleware/issues/125),不过现在应该不用判断physcisFileSystem了，因为MultiCompiler的问题已经修复了。对于'middleware'阶段来说，我们其实还没有启动服务器的，所以我们只是添加了一个webpack的中间件。
+那么这里的作用应该也是一样的！具体可以参考文末参考文献,你也可以查看[这个issue](https://github.com/webpack/webpack-dev-middleware/issues/125),不过现在应该不用判断physcisFileSystem了，因为MultiCompiler的问题已经修复了。对于'middleware'阶段来说，我们其实还没有启动服务器的，所以我们只是添加了一个webpack的中间件。从上面说的执行时机来说，我们此时也没有启动服务器，但是我们此时的webpackConfig已经是完整的了，而且在`middleware`阶段我们已经手动调用webpack方法开始编译，并得到我们的compiler对象，同时设置了webpack吐出的文件直接给我们的server这个koa中间件（`此阶段主要用于注册koa中间件`）！
 
 我们再来看看`server.after`中的回调函数：
 ```js
@@ -887,7 +909,13 @@ compiler.run(function(err, stats) {
 
 注意，在server服务器启动之后，我们会监听package.json和webpack.config.js文件的变化，如果文件变化了那么我们会`重启koa服务器`！
 
-总之：dora-plugin-webpack可以让你配置webpack配置，但是同时也提供了钩子函数可以让你修改webpack的配置;同时也可以使用koa-webpack-dev-middleware是的我们的server可以从内存中读取文件，而不用把文件写出到硬盘中;在'server.after'中，我们会监听package.json和webpack配置文件的变化从而重启服务器！
+总之：dora-plugin-webpack可以让你配置webpack配置，但是同时也提供了钩子函数可以让你修改webpack的配置;同时也可以使用koa-webpack-dev-middleware是的我们的server可以从内存中读取文件，而不用把文件写出到硬盘中;在'server.after'中，我们会监听package.json和webpack配置文件的变化从而重启服务器！我们总结下这个插件提到的三个阶段：
+
+`'middleware.before'`：得到webpack最终配置，并提供了两个钩子来修改webpack配置,分别为'webpack.updateConfig','webpack.updateConfig.finally'
+
+`middleware`:手动调用webpack进行文件编译得到compiler对象，并指定了webpack静态文件吐出后的服务器
+
+`'server.after'`:此时server已经启动了，我们监听package.json和webpack.config.js文件的变化
 
 2.2 dora-plugin-browser-history
 
