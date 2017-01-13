@@ -574,6 +574,18 @@ else if (Array.isArray(_pluginName)) {
 
 首先我想分析下我们的dora-plugin-webpack，通过它来熟悉我们上面的dora源码分析部分。如下是该插件的源码：
 ```js
+import mergeCustomConfig from 'atool-build/lib/mergeCustomConfig';
+import getWebpackCommonConfig from 'atool-build/lib/getWebpackCommonConfig';
+import webpack, { ProgressPlugin } from 'atool-build/lib/webpack';
+import { join, resolve } from 'path';
+import chalk from 'chalk';
+import chokidar from 'chokidar';
+//A neat wrapper around node.js fs.watch / fs.watchFile / fsevents.
+import NpmInstallPlugin from 'npm-install-webpack-plugin-cn';
+//Speed up development by automatically installing & saving dependencies with Webpack.
+import isEqual from 'lodash.isequal';
+import { readFileSync, existsSync } from 'fs';
+let webpackConfig;
 export default {
   name: 'dora-plugin-webpack',
   'middleware.before'() {
